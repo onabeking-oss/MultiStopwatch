@@ -121,7 +121,7 @@
         <div class="bg-white rounded-xl shadow-lg p-6 max-w-4xl mx-auto border border-gray-200 mt-8">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
                 <h2 class="text-xl font-bold text-gray-700 flex items-center gap-2">
-                    <i data-lucide="clipboard-list"></i> 結果一覧
+                    <i data-lucide="clipboard-list"></i> 結果一覧（タイム順）
                 </h2>
                 <div class="flex gap-2">
                     <button onclick="generateReport()" class="bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded font-medium text-sm transition">
@@ -504,29 +504,42 @@
             return `${mStr}:${sStr}.${msStr}`;
         }
 
-        // レポート生成
+        // レポート生成（ソート機能付き）
         function generateReport() {
             const area = document.getElementById('report-area');
             const now = new Date();
             let text = `【計測結果】 ${now.toLocaleDateString()} ${now.toLocaleTimeString()}\n`;
             text += `--------------------------\n`;
             
-            members.forEach((m, index) => {
+            // タイム順にソートするためのコピーを作成
+            const sortedMembers = [...members].map(m => {
+                let timeVal = Infinity;
                 let timeStr = "--:--.--";
                 let status = "待機中";
-                
+
                 if (m.finishedTime !== null) {
+                    timeVal = m.finishedTime;
                     timeStr = formatTime(m.finishedTime);
                     status = "完了";
                 } else if (m.isRunning) {
-                    timeStr = formatTime(Date.now() - m.startTime);
+                    // 実行中の場合は現在の経過時間を使用
+                    timeVal = Date.now() - m.startTime;
+                    timeStr = formatTime(timeVal);
                     status = "計測中";
                 } else if (m.elapsedTime > 0) {
-                     timeStr = formatTime(m.elapsedTime);
-                     status = "一時停止";
+                    // 一時停止中の場合
+                    timeVal = m.elapsedTime;
+                    timeStr = formatTime(m.elapsedTime);
+                    status = "一時停止";
                 }
+                
+                return { ...m, timeVal, timeStr, status };
+            }).sort((a, b) => a.timeVal - b.timeVal); // 昇順ソート
 
-                text += `${String(index + 1).padStart(2, '0')}. ${m.name.padEnd(10, '　')}: ${timeStr} (${status})\n`;
+            sortedMembers.forEach((m, index) => {
+                // 計測されていない(Infinity)場合は順位を表示しない
+                const rank = m.timeVal === Infinity ? '-' : index + 1;
+                text += `${String(rank).padStart(2, ' ')}. ${m.name.padEnd(10, '　')}: ${m.timeStr} (${m.status})\n`;
             });
             
             area.value = text;
