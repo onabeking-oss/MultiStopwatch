@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>マルチストップウォッチ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700&family=Noto+Sans+JP:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6;
+            touch-action: manipulation; /* スマホでのダブルタップ拡大防止 */
+        }
+        
+        .timer-font {
+            font-family: 'Roboto Mono', monospace;
+            font-feature-settings: "tnum";
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* モバイルでの操作性を向上させるためのスタイル */
+        .btn-action {
+            transition: all 0.1s;
+        }
+        .btn-action:active {
+            transform: scale(0.95);
+        }
+        
+        /* スクロールバーのカスタマイズ */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+
+        /* モーダル表示用のアニメーション */
+        .modal-enter {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        .modal-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .modal-exit {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .modal-exit-active {
+            opacity: 0;
+            transform: scale(0.95);
+            transition: opacity 0.2s, transform 0.2s;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-gray-800">
+
+    <!-- ヘッダー -->
+    <header class="bg-blue-600 text-white shadow-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl md:text-2xl font-bold flex items-center gap-2">
+                <i data-lucide="timer"></i> マルチストップウォッチ
+            </h1>
+            <div class="text-sm hidden md:block opacity-90">複数人のタイムを同時に管理</div>
+        </div>
+        
+        <!-- 全体コントロール -->
+        <div class="bg-blue-700 py-3 px-4 shadow-inner">
+            <div class="container mx-auto flex flex-wrap gap-3 justify-center md:justify-start">
+                <button onclick="startAll()" class="btn-action bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded shadow flex items-center gap-2 flex-1 md:flex-none justify-center">
+                    <i data-lucide="play"></i> 全員スタート
+                </button>
+                <button onclick="stopAll()" class="btn-action bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded shadow flex items-center gap-2 flex-1 md:flex-none justify-center">
+                    <i data-lucide="square"></i> 全員ストップ
+                </button>
+                <button onclick="resetAll()" class="btn-action bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded shadow flex items-center gap-2 flex-1 md:flex-none justify-center">
+                    <i data-lucide="rotate-ccw"></i> 全員リセット
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-grow container mx-auto px-2 py-6">
+        
+        <!-- メンバーリスト -->
+        <div id="members-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <!-- JavaScriptでここにメンバーカードが生成されます -->
+        </div>
+
+        <!-- メンバー追加ボタン -->
+        <div class="flex justify-center mb-12">
+            <button onclick="addMember()" class="btn-action bg-white border-2 border-dashed border-gray-400 text-gray-600 hover:border-blue-500 hover:text-blue-500 font-bold py-3 px-8 rounded-lg w-full md:w-auto flex items-center justify-center gap-2 transition-colors">
+                <i data-lucide="plus"></i> メンバーを追加する
+            </button>
+        </div>
+
+        <!-- 集計エリア -->
+        <div class="bg-white rounded-xl shadow-lg p-6 max-w-4xl mx-auto border border-gray-200">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 class="text-xl font-bold text-gray-700 flex items-center gap-2">
+                    <i data-lucide="clipboard-list"></i> 結果一覧
+                </h2>
+                <div class="flex gap-2">
+                    <button onclick="generateReport()" class="bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded font-medium text-sm transition">
+                        更新
+                    </button>
+                    <button onclick="copyReport()" class="bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded font-medium text-sm flex items-center gap-2 shadow transition">
+                        <i data-lucide="copy"></i> コピー
+                    </button>
+                </div>
+            </div>
+            <textarea id="report-area" class="w-full h-48 p-4 bg-gray-50 border border-gray-300 rounded-lg timer-font text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" readonly placeholder="「更新」ボタンを押すと、現在のタイム一覧が表示されます。"></textarea>
+            <p id="copy-message" class="text-green-600 text-sm mt-2 font-bold h-5 opacity-0 transition-opacity text-center"></p>
+        </div>
+
+    </main>
+
+    <footer class="bg-gray-800 text-gray-400 py-6 text-center text-sm">
+        <p>&copy; Multi Stopwatch App</p>
+    </footer>
+
+    <!-- カスタム確認モーダル -->
+    <div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[100] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all scale-100" id="modal-content">
+            <h3 id="modal-title" class="text-xl font-bold text-gray-800 mb-2">確認</h3>
+            <p id="modal-message" class="text-gray-600 mb-6">本当に実行しますか？</p>
+            <div class="flex justify-end gap-3" id="modal-actions">
+                <button onclick="closeModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition">
+                    キャンセル
+                </button>
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-medium shadow transition">
+                    実行する
+                </button>
+            </div>
+            <!-- OKボタンのみ（通知用） -->
+            <div class="flex justify-end gap-3 hidden" id="modal-ok-only">
+                <button onclick="closeModal()" class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium shadow transition">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- テンプレート用スクリプト -->
+    <script>
+        // 状態管理
+        let members = [];
+        const maxMembers = 50; // 最大人数制限
+        let pendingModalAction = null; // モーダルでの実行待ちアクション
+        
+        // 初期化
+        window.onload = function() {
+            // 初期メンバーを10人追加
+            for(let i = 1; i <= 10; i++) {
+                addMemberInternal(`メンバー ${i}`);
+            }
+            lucide.createIcons();
+            
+            // アニメーションループ開始
+            requestAnimationFrame(updateTimers);
+        };
+
+        // --- モーダル制御 ---
+        function showModal(title, message, onConfirm = null, isAlert = false) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+            
+            const overlay = document.getElementById('custom-modal');
+            const actions = document.getElementById('modal-actions');
+            const okOnly = document.getElementById('modal-ok-only');
+            
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            
+            if (isAlert) {
+                // 通知モード（OKボタンのみ）
+                actions.classList.add('hidden');
+                okOnly.classList.remove('hidden');
+                pendingModalAction = null;
+            } else {
+                // 確認モード（キャンセル/実行）
+                actions.classList.remove('hidden');
+                okOnly.classList.add('hidden');
+                pendingModalAction = onConfirm;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+            document.getElementById('custom-modal').classList.remove('flex');
+            pendingModalAction = null;
+        }
+
+        // モーダルの実行ボタンに紐付け
+        document.getElementById('modal-confirm-btn').onclick = function() {
+            if (pendingModalAction) {
+                pendingModalAction();
+            }
+            closeModal();
+        };
+
+        // メンバー追加処理
+        function addMember() {
+            if (members.length >= maxMembers) {
+                showModal("制限", "これ以上メンバーを追加できません（最大50人まで）。", null, true);
+                return;
+            }
+            const nextNum = members.length + 1;
+            addMemberInternal(`メンバー ${nextNum}`);
+            lucide.createIcons();
+        }
+
+        // 内部用メンバー追加ロジック
+        function addMemberInternal(name) {
+            const id = Date.now() + Math.random().toString(36).substr(2, 9);
+            const member = {
+                id: id,
+                name: name,
+                startTime: 0,
+                elapsedTime: 0,
+                isRunning: false,
+                finishedTime: null // ストップした時の確定タイム
+            };
+            members.push(member);
+            renderMemberCard(member);
+        }
+
+        // カードのHTML生成と挿入
+        function renderMemberCard(member) {
+            const container = document.getElementById('members-container');
+            const card = document.createElement('div');
+            card.id = `card-${member.id}`;
+            card.className = "bg-white rounded-lg shadow border-l-4 border-gray-300 p-4 transition-all duration-300";
+            
+            card.innerHTML = `
+                <div class="flex justify-between items-center mb-2">
+                    <input type="text" value="${member.name}" 
+                        onchange="updateName('${member.id}', this.value)"
+                        class="font-bold text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-2/3 px-1">
+                    <button onclick="removeMember('${member.id}')" class="text-gray-300 hover:text-red-500 p-1" title="削除">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                
+                <div class="flex justify-between items-end gap-2">
+                    <div id="timer-${member.id}" class="timer-font text-4xl md:text-5xl font-bold text-gray-800 tracking-tight tabular-nums">
+                        00:00.00
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mt-4">
+                    <button id="btn-start-${member.id}" onclick="toggleTimer('${member.id}')" 
+                        class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95">
+                        スタート
+                    </button>
+                    <button onclick="resetTimer('${member.id}')" 
+                        class="bg-gray-200 hover:bg-gray-300 text-gray-600 font-bold py-2 rounded transition shadow-sm active:scale-95">
+                        リセット
+                    </button>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        // メンバー削除
+        function removeMember(id) {
+            showModal("メンバーの削除", "このメンバーを削除しますか？", () => {
+                const index = members.findIndex(m => m.id === id);
+                if (index > -1) {
+                    members.splice(index, 1);
+                    const el = document.getElementById(`card-${id}`);
+                    if(el) el.remove();
+                }
+            });
+        }
+
+        // 名前更新
+        function updateName(id, newName) {
+            const member = members.find(m => m.id === id);
+            if(member) member.name = newName;
+        }
+
+        // 個別タイマー操作（スタート/ストップ切り替え）
+        function toggleTimer(id) {
+            const member = members.find(m => m.id === id);
+            if (!member) return;
+
+            const btn = document.getElementById(`btn-start-${id}`);
+            const card = document.getElementById(`card-${id}`);
+
+            if (member.isRunning) {
+                // ストップ処理
+                member.isRunning = false;
+                member.elapsedTime = Date.now() - member.startTime;
+                member.finishedTime = member.elapsedTime; // 確定タイム
+                
+                // UI更新
+                btn.textContent = "再開";
+                btn.className = "bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                card.classList.remove("border-green-500");
+                card.classList.add("border-blue-500"); // 完了色
+            } else {
+                // スタート処理
+                member.startTime = Date.now() - member.elapsedTime;
+                member.isRunning = true;
+                member.finishedTime = null; // 再開したら確定タイムは消す
+                
+                // UI更新
+                btn.textContent = "ストップ";
+                btn.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                card.classList.remove("border-gray-300", "border-blue-500");
+                card.classList.add("border-green-500"); // 実行中色
+            }
+        }
+
+        // 個別リセット
+        function resetTimer(id) {
+            const member = members.find(m => m.id === id);
+            if (!member) return;
+
+            member.isRunning = false;
+            member.elapsedTime = 0;
+            member.startTime = 0;
+            member.finishedTime = null;
+
+            // 表示更新
+            document.getElementById(`timer-${id}`).textContent = "00:00.00";
+            
+            // ボタン状態リセット
+            const btn = document.getElementById(`btn-start-${id}`);
+            btn.textContent = "スタート";
+            btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+
+            const card = document.getElementById(`card-${id}`);
+            card.classList.remove("border-green-500", "border-blue-500");
+            card.classList.add("border-gray-300");
+        }
+
+        // 全員スタート
+        function startAll() {
+            const now = Date.now();
+            members.forEach(member => {
+                if (!member.isRunning) {
+                    member.isRunning = true;
+                    // 既に経過時間がある場合は加算、なければ0から
+                    member.startTime = now - member.elapsedTime;
+                    member.finishedTime = null;
+
+                    // UI更新
+                    const btn = document.getElementById(`btn-start-${member.id}`);
+                    if(btn) {
+                        btn.textContent = "ストップ";
+                        btn.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                    }
+                    const card = document.getElementById(`card-${member.id}`);
+                    if(card) {
+                        card.classList.remove("border-gray-300", "border-blue-500");
+                        card.classList.add("border-green-500");
+                    }
+                }
+            });
+        }
+
+        // 全員ストップ
+        function stopAll() {
+            const now = Date.now();
+            members.forEach(member => {
+                if (member.isRunning) {
+                    member.isRunning = false;
+                    member.elapsedTime = now - member.startTime;
+                    member.finishedTime = member.elapsedTime;
+
+                    // UI更新
+                    const btn = document.getElementById(`btn-start-${member.id}`);
+                    if(btn) {
+                        btn.textContent = "再開";
+                        btn.className = "bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                    }
+                    const card = document.getElementById(`card-${member.id}`);
+                    if(card) {
+                        card.classList.remove("border-green-500");
+                        card.classList.add("border-blue-500");
+                    }
+                }
+            });
+        }
+
+        // 全員リセット（確認モーダル使用）
+        function resetAll() {
+            showModal("全員リセット", "全員のタイムをリセットしますか？この操作は取り消せません。", () => {
+                members.forEach(member => resetTimer(member.id));
+            });
+        }
+
+        // 描画ループ (RequestAnimationFrame)
+        function updateTimers() {
+            const now = Date.now();
+            
+            members.forEach(member => {
+                if (member.isRunning) {
+                    const diff = now - member.startTime;
+                    const timeStr = formatTime(diff);
+                    const el = document.getElementById(`timer-${member.id}`);
+                    if(el) el.textContent = timeStr;
+                }
+            });
+
+            requestAnimationFrame(updateTimers);
+        }
+
+        // 時間フォーマット (MM:SS.ms)
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            const milliseconds = Math.floor((ms % 1000) / 10); // 2桁表示
+
+            const mStr = String(minutes).padStart(2, '0');
+            const sStr = String(seconds).padStart(2, '0');
+            const msStr = String(milliseconds).padStart(2, '0');
+
+            return `${mStr}:${sStr}.${msStr}`;
+        }
+
+        // レポート生成
+        function generateReport() {
+            const area = document.getElementById('report-area');
+            const now = new Date();
+            let text = `【計測結果】 ${now.toLocaleDateString()} ${now.toLocaleTimeString()}\n`;
+            text += `--------------------------\n`;
+            
+            members.forEach((m, index) => {
+                let timeStr = "--:--.--";
+                let status = "待機中";
+                
+                if (m.finishedTime !== null) {
+                    timeStr = formatTime(m.finishedTime);
+                    status = "完了";
+                } else if (m.isRunning) {
+                    timeStr = formatTime(Date.now() - m.startTime);
+                    status = "計測中";
+                } else if (m.elapsedTime > 0) {
+                     timeStr = formatTime(m.elapsedTime);
+                     status = "一時停止";
+                }
+
+                text += `${String(index + 1).padStart(2, '0')}. ${m.name.padEnd(10, '　')}: ${timeStr} (${status})\n`;
+            });
+            
+            area.value = text;
+        }
+
+        // コピー機能
+        function copyReport() {
+            const area = document.getElementById('report-area');
+            if (!area.value) generateReport(); // 空なら生成
+            
+            area.select();
+            document.execCommand('copy');
+            
+            const msg = document.getElementById('copy-message');
+            msg.textContent = "コピーしました！";
+            msg.classList.remove('opacity-0');
+            setTimeout(() => {
+                msg.classList.add('opacity-0');
+            }, 2000);
+        }
+
+    </script>
+</body>
+</html>
