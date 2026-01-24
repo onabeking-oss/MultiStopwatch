@@ -13,6 +13,7 @@
             font-family: 'Noto Sans JP', sans-serif;
             background-color: #f3f4f6;
             touch-action: manipulation; /* スマホでのダブルタップ拡大防止 */
+            padding-bottom: 80px; /* FABのための余白 */
         }
         
         .timer-font {
@@ -27,6 +28,16 @@
         }
         .btn-action:active {
             transform: scale(0.95);
+        }
+        
+        /* カードのアニメーション */
+        .member-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .member-card.removing {
+            opacity: 0;
+            transform: scale(0.9);
+            margin-bottom: -100px; /* 詰める動きをスムーズに */
         }
         
         /* スクロールバーのカスタマイズ */
@@ -44,29 +55,9 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #a8a8a8; 
         }
-
-        /* モーダル表示用のアニメーション */
-        .modal-enter {
-            opacity: 0;
-            transform: scale(0.95);
-        }
-        .modal-enter-active {
-            opacity: 1;
-            transform: scale(1);
-            transition: opacity 0.2s, transform 0.2s;
-        }
-        .modal-exit {
-            opacity: 1;
-            transform: scale(1);
-        }
-        .modal-exit-active {
-            opacity: 0;
-            transform: scale(0.95);
-            transition: opacity 0.2s, transform 0.2s;
-        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col text-gray-800">
+<body class="min-h-screen flex flex-col text-gray-800 relative">
 
     <!-- ヘッダー -->
     <header class="bg-blue-600 text-white shadow-md sticky top-0 z-50">
@@ -96,20 +87,38 @@
     <!-- メインコンテンツ -->
     <main class="flex-grow container mx-auto px-2 py-6">
         
-        <!-- メンバーリスト -->
-        <div id="members-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            <!-- JavaScriptでここにメンバーカードが生成されます -->
+        <!-- 設定エリア -->
+        <div class="bg-white rounded-lg p-4 mb-6 flex flex-wrap items-center justify-between shadow-sm border border-gray-200 gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-100 p-2 rounded-full text-blue-600">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="font-bold text-gray-700 text-sm md:text-base">初期人数設定:</span>
+                    <input type="number" id="init-count" value="10" min="1" max="50" class="w-20 p-2 rounded border border-gray-300 text-center font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <span class="text-sm text-gray-600">人</span>
+                </div>
+            </div>
+            <button onclick="resetWithCount()" class="w-full md:w-auto bg-gray-50 hover:bg-red-50 text-gray-700 hover:text-red-600 border border-gray-300 hover:border-red-300 font-bold py-2 px-4 rounded shadow-sm text-sm flex items-center justify-center gap-2 transition btn-action">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> 設定して再生成
+            </button>
         </div>
 
-        <!-- メンバー追加ボタン -->
-        <div class="flex justify-center mb-12">
-            <button onclick="addMember()" class="btn-action bg-white border-2 border-dashed border-gray-400 text-gray-600 hover:border-blue-500 hover:text-blue-500 font-bold py-3 px-8 rounded-lg w-full md:w-auto flex items-center justify-center gap-2 transition-colors">
-                <i data-lucide="plus"></i> メンバーを追加する
+        <!-- メンバーリストと追加ボタンを含むグリッド -->
+        <div id="members-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <!-- JavaScriptでここにメンバーカードが生成されます -->
+            
+            <!-- カード型の追加ボタン（リストの最後に表示） -->
+            <button onclick="addMember()" class="member-card bg-gray-100 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-400 hover:text-blue-500 rounded-lg min-h-[180px] flex flex-col items-center justify-center gap-2 transition-all duration-200 group btn-action" id="add-card-btn">
+                <div class="bg-white p-3 rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                    <i data-lucide="plus" class="w-8 h-8"></i>
+                </div>
+                <span class="font-bold text-sm">メンバーを追加</span>
             </button>
         </div>
 
         <!-- 集計エリア -->
-        <div class="bg-white rounded-xl shadow-lg p-6 max-w-4xl mx-auto border border-gray-200">
+        <div class="bg-white rounded-xl shadow-lg p-6 max-w-4xl mx-auto border border-gray-200 mt-8">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
                 <h2 class="text-xl font-bold text-gray-700 flex items-center gap-2">
                     <i data-lucide="clipboard-list"></i> 結果一覧
@@ -129,12 +138,17 @@
 
     </main>
 
+    <!-- フローティングアクションボタン (FAB) -->
+    <button onclick="addMember()" class="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-xl z-40 transition transform hover:scale-110 active:scale-95 flex items-center justify-center md:hidden" aria-label="メンバーを追加">
+        <i data-lucide="plus" class="w-8 h-8"></i>
+    </button>
+
     <footer class="bg-gray-800 text-gray-400 py-6 text-center text-sm">
         <p>&copy; Multi Stopwatch App</p>
     </footer>
 
     <!-- カスタム確認モーダル -->
-    <div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[100] hidden items-center justify-center p-4">
+    <div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[100] hidden items-center justify-center p-4 transition-opacity duration-200">
         <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all scale-100" id="modal-content">
             <h3 id="modal-title" class="text-xl font-bold text-gray-800 mb-2">確認</h3>
             <p id="modal-message" class="text-gray-600 mb-6">本当に実行しますか？</p>
@@ -164,15 +178,48 @@
         
         // 初期化
         window.onload = function() {
-            // 初期メンバーを10人追加
-            for(let i = 1; i <= 10; i++) {
-                addMemberInternal(`メンバー ${i}`);
-            }
-            lucide.createIcons();
+            // 入力欄の値を取得して初期化（デフォルト10）
+            const initCount = parseInt(document.getElementById('init-count').value) || 10;
+            initializeList(initCount, false);
             
             // アニメーションループ開始
             requestAnimationFrame(updateTimers);
         };
+
+        // 人数指定で再生成
+        function resetWithCount() {
+            const countInput = document.getElementById('init-count');
+            let count = parseInt(countInput.value);
+            
+            // バリデーション
+            if (isNaN(count) || count < 1) count = 1;
+            if (count > maxMembers) count = maxMembers;
+            countInput.value = count;
+
+            showModal("リストの再生成", `現在のデータをすべて削除し、${count}人で初期化しますか？`, () => {
+                initializeList(count, true);
+            });
+        }
+
+        // リスト初期化処理
+        function initializeList(count, clearExisting) {
+            // 既存データ削除
+            if (clearExisting) {
+                members = [];
+                const grid = document.getElementById('members-grid');
+                // 追加ボタン以外のカードを全て削除
+                const cards = grid.querySelectorAll('.member-card:not(#add-card-btn)');
+                cards.forEach(c => c.remove());
+            }
+
+            // 指定人数分追加
+            for(let i = 1; i <= count; i++) {
+                addMemberInternal(`メンバー ${i}`);
+            }
+            
+            // アイコン更新
+            lucide.createIcons();
+        }
 
         // --- モーダル制御 ---
         function showModal(title, message, onConfirm = null, isAlert = false) {
@@ -186,13 +233,16 @@
             overlay.classList.remove('hidden');
             overlay.classList.add('flex');
             
+            // アニメーション用クラス
+            setTimeout(() => {
+                overlay.classList.remove('opacity-0');
+            }, 10);
+
             if (isAlert) {
-                // 通知モード（OKボタンのみ）
                 actions.classList.add('hidden');
                 okOnly.classList.remove('hidden');
                 pendingModalAction = null;
             } else {
-                // 確認モード（キャンセル/実行）
                 actions.classList.remove('hidden');
                 okOnly.classList.add('hidden');
                 pendingModalAction = onConfirm;
@@ -200,9 +250,13 @@
         }
 
         function closeModal() {
-            document.getElementById('custom-modal').classList.add('hidden');
-            document.getElementById('custom-modal').classList.remove('flex');
-            pendingModalAction = null;
+            const overlay = document.getElementById('custom-modal');
+            overlay.classList.add('opacity-0');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+                pendingModalAction = null;
+            }, 200);
         }
 
         // モーダルの実行ボタンに紐付け
@@ -220,8 +274,19 @@
                 return;
             }
             const nextNum = members.length + 1;
-            addMemberInternal(`メンバー ${nextNum}`);
+            const newId = addMemberInternal(`メンバー ${nextNum}`);
             lucide.createIcons();
+            
+            // 追加した要素までスクロール＆ハイライト
+            setTimeout(() => {
+                const el = document.getElementById(`card-${newId}`);
+                if(el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // ハイライトアニメーション
+                    el.classList.add('ring-2', 'ring-blue-400', 'scale-[1.02]');
+                    setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400', 'scale-[1.02]'), 600);
+                }
+            }, 50);
         }
 
         // 内部用メンバー追加ロジック
@@ -233,25 +298,28 @@
                 startTime: 0,
                 elapsedTime: 0,
                 isRunning: false,
-                finishedTime: null // ストップした時の確定タイム
+                finishedTime: null
             };
             members.push(member);
             renderMemberCard(member);
+            return id;
         }
 
         // カードのHTML生成と挿入
         function renderMemberCard(member) {
-            const container = document.getElementById('members-container');
+            const grid = document.getElementById('members-grid');
+            const addBtn = document.getElementById('add-card-btn'); // 追加ボタン要素
+            
             const card = document.createElement('div');
             card.id = `card-${member.id}`;
-            card.className = "bg-white rounded-lg shadow border-l-4 border-gray-300 p-4 transition-all duration-300";
+            card.className = "member-card bg-white rounded-lg shadow border-l-4 border-gray-300 p-4 relative";
             
             card.innerHTML = `
                 <div class="flex justify-between items-center mb-2">
                     <input type="text" value="${member.name}" 
                         onchange="updateName('${member.id}', this.value)"
-                        class="font-bold text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-2/3 px-1">
-                    <button onclick="removeMember('${member.id}')" class="text-gray-300 hover:text-red-500 p-1" title="削除">
+                        class="font-bold text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-2/3 px-1 transition-colors">
+                    <button onclick="removeMember('${member.id}')" class="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors" title="削除">
                         <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
                 </div>
@@ -273,17 +341,27 @@
                     </button>
                 </div>
             `;
-            container.appendChild(card);
+            
+            // 追加ボタンの前に挿入する
+            grid.insertBefore(card, addBtn);
         }
 
-        // メンバー削除
+        // メンバー削除（スマートなアニメーション付き）
         function removeMember(id) {
             showModal("メンバーの削除", "このメンバーを削除しますか？", () => {
-                const index = members.findIndex(m => m.id === id);
-                if (index > -1) {
-                    members.splice(index, 1);
-                    const el = document.getElementById(`card-${id}`);
-                    if(el) el.remove();
+                const card = document.getElementById(`card-${id}`);
+                if (card) {
+                    // 削除アニメーション開始
+                    card.classList.add('removing');
+                    
+                    // アニメーション完了後にデータを削除
+                    setTimeout(() => {
+                        const index = members.findIndex(m => m.id === id);
+                        if (index > -1) {
+                            members.splice(index, 1);
+                            card.remove();
+                        }
+                    }, 300); // CSS transitionと合わせる
                 }
             });
         }
@@ -294,7 +372,7 @@
             if(member) member.name = newName;
         }
 
-        // 個別タイマー操作（スタート/ストップ切り替え）
+        // 個別タイマー操作
         function toggleTimer(id) {
             const member = members.find(m => m.id === id);
             if (!member) return;
@@ -303,27 +381,25 @@
             const card = document.getElementById(`card-${id}`);
 
             if (member.isRunning) {
-                // ストップ処理
+                // ストップ
                 member.isRunning = false;
                 member.elapsedTime = Date.now() - member.startTime;
-                member.finishedTime = member.elapsedTime; // 確定タイム
+                member.finishedTime = member.elapsedTime;
                 
-                // UI更新
                 btn.textContent = "再開";
                 btn.className = "bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
                 card.classList.remove("border-green-500");
-                card.classList.add("border-blue-500"); // 完了色
+                card.classList.add("border-blue-500");
             } else {
-                // スタート処理
+                // スタート
                 member.startTime = Date.now() - member.elapsedTime;
                 member.isRunning = true;
-                member.finishedTime = null; // 再開したら確定タイムは消す
+                member.finishedTime = null;
                 
-                // UI更新
                 btn.textContent = "ストップ";
                 btn.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
                 card.classList.remove("border-gray-300", "border-blue-500");
-                card.classList.add("border-green-500"); // 実行中色
+                card.classList.add("border-green-500");
             }
         }
 
@@ -337,10 +413,8 @@
             member.startTime = 0;
             member.finishedTime = null;
 
-            // 表示更新
             document.getElementById(`timer-${id}`).textContent = "00:00.00";
             
-            // ボタン状態リセット
             const btn = document.getElementById(`btn-start-${id}`);
             btn.textContent = "スタート";
             btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
@@ -356,11 +430,9 @@
             members.forEach(member => {
                 if (!member.isRunning) {
                     member.isRunning = true;
-                    // 既に経過時間がある場合は加算、なければ0から
                     member.startTime = now - member.elapsedTime;
                     member.finishedTime = null;
 
-                    // UI更新
                     const btn = document.getElementById(`btn-start-${member.id}`);
                     if(btn) {
                         btn.textContent = "ストップ";
@@ -384,7 +456,6 @@
                     member.elapsedTime = now - member.startTime;
                     member.finishedTime = member.elapsedTime;
 
-                    // UI更新
                     const btn = document.getElementById(`btn-start-${member.id}`);
                     if(btn) {
                         btn.textContent = "再開";
@@ -399,35 +470,32 @@
             });
         }
 
-        // 全員リセット（確認モーダル使用）
+        // 全員リセット
         function resetAll() {
             showModal("全員リセット", "全員のタイムをリセットしますか？この操作は取り消せません。", () => {
                 members.forEach(member => resetTimer(member.id));
             });
         }
 
-        // 描画ループ (RequestAnimationFrame)
+        // 描画ループ
         function updateTimers() {
             const now = Date.now();
-            
             members.forEach(member => {
                 if (member.isRunning) {
                     const diff = now - member.startTime;
-                    const timeStr = formatTime(diff);
                     const el = document.getElementById(`timer-${member.id}`);
-                    if(el) el.textContent = timeStr;
+                    if(el) el.textContent = formatTime(diff);
                 }
             });
-
             requestAnimationFrame(updateTimers);
         }
 
-        // 時間フォーマット (MM:SS.ms)
+        // 時間フォーマット
         function formatTime(ms) {
             const totalSeconds = Math.floor(ms / 1000);
             const minutes = Math.floor(totalSeconds / 60);
             const seconds = totalSeconds % 60;
-            const milliseconds = Math.floor((ms % 1000) / 10); // 2桁表示
+            const milliseconds = Math.floor((ms % 1000) / 10);
 
             const mStr = String(minutes).padStart(2, '0');
             const sStr = String(seconds).padStart(2, '0');
@@ -467,7 +535,7 @@
         // コピー機能
         function copyReport() {
             const area = document.getElementById('report-area');
-            if (!area.value) generateReport(); // 空なら生成
+            if (!area.value) generateReport();
             
             area.select();
             document.execCommand('copy');
@@ -479,7 +547,6 @@
                 msg.classList.add('opacity-0');
             }, 2000);
         }
-
     </script>
 </body>
 </html>
