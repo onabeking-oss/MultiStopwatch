@@ -132,7 +132,7 @@
                     </button>
                 </div>
             </div>
-            <textarea id="report-area" class="w-full h-48 p-4 bg-gray-50 border border-gray-300 rounded-lg timer-font text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" readonly placeholder="「更新」ボタンを押すと、現在のタイム一覧が表示されます。"></textarea>
+            <textarea id="report-area" class="w-full h-64 p-4 bg-gray-50 border border-gray-300 rounded-lg timer-font text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" readonly placeholder="「更新」ボタンを押すと、現在のタイムとラップ一覧が表示されます。"></textarea>
             <p id="copy-message" class="text-green-600 text-sm mt-2 font-bold h-5 opacity-0 transition-opacity text-center"></p>
         </div>
 
@@ -259,7 +259,6 @@
             }, 200);
         }
 
-        // モーダルの実行ボタンに紐付け
         document.getElementById('modal-confirm-btn').onclick = function() {
             if (pendingModalAction) {
                 pendingModalAction();
@@ -277,12 +276,10 @@
             const newId = addMemberInternal(`メンバー ${nextNum}`);
             lucide.createIcons();
             
-            // 追加した要素までスクロール＆ハイライト
             setTimeout(() => {
                 const el = document.getElementById(`card-${newId}`);
                 if(el) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // ハイライトアニメーション
                     el.classList.add('ring-2', 'ring-blue-400', 'scale-[1.02]');
                     setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400', 'scale-[1.02]'), 600);
                 }
@@ -298,7 +295,9 @@
                 startTime: 0,
                 elapsedTime: 0,
                 isRunning: false,
-                finishedTime: null
+                finishedTime: null,
+                laps: [], // ラップリスト {split: number, lap: number, isFinal: boolean}
+                lastLapSplit: 0 // 前回のラップ時の経過時間
             };
             members.push(member);
             renderMemberCard(member);
@@ -308,14 +307,14 @@
         // カードのHTML生成と挿入
         function renderMemberCard(member) {
             const grid = document.getElementById('members-grid');
-            const addBtn = document.getElementById('add-card-btn'); // 追加ボタン要素
+            const addBtn = document.getElementById('add-card-btn');
             
             const card = document.createElement('div');
             card.id = `card-${member.id}`;
             card.className = "member-card bg-white rounded-lg shadow border-l-4 border-gray-300 p-4 relative";
             
             card.innerHTML = `
-                <div class="flex justify-between items-center mb-2">
+                <div class="flex justify-between items-center mb-1">
                     <input type="text" value="${member.name}" 
                         onchange="updateName('${member.id}', this.value)"
                         class="font-bold text-gray-700 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-2/3 px-1 transition-colors">
@@ -324,44 +323,196 @@
                     </button>
                 </div>
                 
-                <div class="flex justify-between items-end gap-2">
-                    <div id="timer-${member.id}" class="timer-font text-4xl md:text-5xl font-bold text-gray-800 tracking-tight tabular-nums">
+                <div class="flex flex-col mb-3">
+                    <div id="timer-${member.id}" class="timer-font text-4xl md:text-5xl font-bold text-gray-800 tracking-tight tabular-nums leading-tight">
                         00:00.00
+                    </div>
+                    <div id="lap-display-${member.id}" class="text-xs text-blue-600 font-mono h-4 pl-1">
+                        <!-- 最新ラップ表示エリア -->
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-2 mt-4">
-                    <button id="btn-start-${member.id}" onclick="toggleTimer('${member.id}')" 
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <button id="btn-sub-${member.id}" onclick="handleSubAction('${member.id}')" 
+                        class="bg-gray-200 hover:bg-gray-300 text-gray-400 font-bold py-2 rounded transition shadow-sm active:scale-95 cursor-not-allowed" disabled>
+                        リセット
+                    </button>
+                    <button id="btn-main-${member.id}" onclick="handleMainAction('${member.id}')" 
                         class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95">
                         スタート
-                    </button>
-                    <button onclick="resetTimer('${member.id}')" 
-                        class="bg-gray-200 hover:bg-gray-300 text-gray-600 font-bold py-2 rounded transition shadow-sm active:scale-95">
-                        リセット
                     </button>
                 </div>
             `;
             
-            // 追加ボタンの前に挿入する
             grid.insertBefore(card, addBtn);
         }
 
-        // メンバー削除（スマートなアニメーション付き）
+        // UI更新関数
+        function updateCardUI(member) {
+            const btnMain = document.getElementById(`btn-main-${member.id}`);
+            const btnSub = document.getElementById(`btn-sub-${member.id}`);
+            const card = document.getElementById(`card-${member.id}`);
+
+            if (!btnMain || !btnSub || !card) return;
+
+            // リセット状態 (初期状態)
+            if (!member.isRunning && member.elapsedTime === 0) {
+                btnMain.textContent = "スタート";
+                btnMain.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                
+                btnSub.textContent = "リセット";
+                btnSub.className = "bg-gray-100 text-gray-300 font-bold py-2 rounded transition cursor-not-allowed";
+                btnSub.disabled = true;
+
+                card.className = "member-card bg-white rounded-lg shadow border-l-4 border-gray-300 p-4 relative";
+            }
+            // 計測中
+            else if (member.isRunning) {
+                btnMain.textContent = "ストップ";
+                btnMain.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                
+                btnSub.textContent = "ラップ";
+                btnSub.className = "bg-slate-500 hover:bg-slate-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                btnSub.disabled = false;
+
+                card.className = "member-card bg-white rounded-lg shadow border-l-4 border-green-500 p-4 relative";
+            }
+            // 一時停止 / 完了
+            else {
+                btnMain.textContent = "再開";
+                btnMain.className = "bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                
+                btnSub.textContent = "リセット";
+                btnSub.className = "bg-gray-200 hover:bg-gray-300 text-gray-600 font-bold py-2 rounded transition shadow-sm active:scale-95";
+                btnSub.disabled = false;
+
+                card.className = "member-card bg-white rounded-lg shadow border-l-4 border-blue-500 p-4 relative";
+            }
+        }
+
+        // 右側ボタン（スタート/ストップ/再開）のアクション
+        function handleMainAction(id) {
+            const member = members.find(m => m.id === id);
+            if (!member) return;
+
+            const lapDisplay = document.getElementById(`lap-display-${member.id}`);
+
+            if (member.isRunning) {
+                // ストップ処理
+                member.isRunning = false;
+                member.elapsedTime = Date.now() - member.startTime;
+                member.finishedTime = member.elapsedTime;
+
+                // --- ストップ時に最後の区間を自動で「Final Lap」として記録 ---
+                const finalLapTime = member.elapsedTime - member.lastLapSplit;
+                if (finalLapTime > 0) {
+                     member.laps.push({
+                        split: member.elapsedTime,
+                        lap: finalLapTime,
+                        isFinal: true
+                    });
+                    // 画面表示更新
+                    if(lapDisplay) {
+                        lapDisplay.textContent = `Final Lap: ${formatTime(finalLapTime)}`;
+                        lapDisplay.classList.add('text-red-600', 'font-bold');
+                    }
+                }
+            } else {
+                // スタート/再開処理
+                member.startTime = Date.now() - member.elapsedTime;
+                member.isRunning = true;
+                member.finishedTime = null;
+
+                // 再開時はFinal Lap（仮のゴール）を取り消す
+                if (member.laps.length > 0 && member.laps[member.laps.length - 1].isFinal) {
+                    member.laps.pop();
+                }
+                
+                // 表示のリセット（赤字などを消す）
+                 if(lapDisplay) {
+                    lapDisplay.classList.remove('text-red-600', 'font-bold');
+                    // 直前の正規ラップを表示に戻す
+                    if(member.laps.length > 0) {
+                         const lastLap = member.laps[member.laps.length - 1];
+                         const lapNum = member.laps.length;
+                         lapDisplay.textContent = `Lap ${lapNum}: ${formatTime(lastLap.lap)}`;
+                    } else {
+                        lapDisplay.textContent = "";
+                    }
+                 }
+            }
+            updateCardUI(member);
+        }
+
+        // 左側ボタン（リセット/ラップ）のアクション
+        function handleSubAction(id) {
+            const member = members.find(m => m.id === id);
+            if (!member) return;
+
+            if (member.isRunning) {
+                // ラップ記録処理
+                recordLap(member);
+            } else {
+                // リセット処理
+                resetTimerData(member);
+            }
+        }
+
+        // ラップ記録
+        function recordLap(member) {
+            const currentSplit = Date.now() - member.startTime;
+            const lapTime = currentSplit - member.lastLapSplit;
+            
+            member.laps.push({
+                split: currentSplit,
+                lap: lapTime,
+                isFinal: false
+            });
+            member.lastLapSplit = currentSplit;
+
+            // 画面上のラップ表示更新
+            const lapDisplay = document.getElementById(`lap-display-${member.id}`);
+            if (lapDisplay) {
+                const lapNum = member.laps.length;
+                lapDisplay.textContent = `Lap ${lapNum}: ${formatTime(lapTime)}`;
+                // フラッシュアニメーション
+                lapDisplay.classList.add('text-orange-500', 'scale-110');
+                setTimeout(() => lapDisplay.classList.remove('text-orange-500', 'scale-110'), 200);
+            }
+        }
+
+        // 個別リセットデータ処理
+        function resetTimerData(member) {
+            member.isRunning = false;
+            member.elapsedTime = 0;
+            member.startTime = 0;
+            member.finishedTime = null;
+            member.laps = [];
+            member.lastLapSplit = 0;
+
+            document.getElementById(`timer-${member.id}`).textContent = "00:00.00";
+            const lapDisplay = document.getElementById(`lap-display-${member.id}`);
+            if (lapDisplay) {
+                lapDisplay.textContent = "";
+                lapDisplay.classList.remove('text-red-600', 'font-bold');
+            }
+            
+            updateCardUI(member);
+        }
+
+        // メンバー削除
         function removeMember(id) {
             showModal("メンバーの削除", "このメンバーを削除しますか？", () => {
                 const card = document.getElementById(`card-${id}`);
                 if (card) {
-                    // 削除アニメーション開始
                     card.classList.add('removing');
-                    
-                    // アニメーション完了後にデータを削除
                     setTimeout(() => {
                         const index = members.findIndex(m => m.id === id);
                         if (index > -1) {
                             members.splice(index, 1);
                             card.remove();
                         }
-                    }, 300); // CSS transitionと合わせる
+                    }, 300);
                 }
             });
         }
@@ -370,58 +521,6 @@
         function updateName(id, newName) {
             const member = members.find(m => m.id === id);
             if(member) member.name = newName;
-        }
-
-        // 個別タイマー操作
-        function toggleTimer(id) {
-            const member = members.find(m => m.id === id);
-            if (!member) return;
-
-            const btn = document.getElementById(`btn-start-${id}`);
-            const card = document.getElementById(`card-${id}`);
-
-            if (member.isRunning) {
-                // ストップ
-                member.isRunning = false;
-                member.elapsedTime = Date.now() - member.startTime;
-                member.finishedTime = member.elapsedTime;
-                
-                btn.textContent = "再開";
-                btn.className = "bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
-                card.classList.remove("border-green-500");
-                card.classList.add("border-blue-500");
-            } else {
-                // スタート
-                member.startTime = Date.now() - member.elapsedTime;
-                member.isRunning = true;
-                member.finishedTime = null;
-                
-                btn.textContent = "ストップ";
-                btn.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
-                card.classList.remove("border-gray-300", "border-blue-500");
-                card.classList.add("border-green-500");
-            }
-        }
-
-        // 個別リセット
-        function resetTimer(id) {
-            const member = members.find(m => m.id === id);
-            if (!member) return;
-
-            member.isRunning = false;
-            member.elapsedTime = 0;
-            member.startTime = 0;
-            member.finishedTime = null;
-
-            document.getElementById(`timer-${id}`).textContent = "00:00.00";
-            
-            const btn = document.getElementById(`btn-start-${id}`);
-            btn.textContent = "スタート";
-            btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
-
-            const card = document.getElementById(`card-${id}`);
-            card.classList.remove("border-green-500", "border-blue-500");
-            card.classList.add("border-gray-300");
         }
 
         // 全員スタート
@@ -433,16 +532,22 @@
                     member.startTime = now - member.elapsedTime;
                     member.finishedTime = null;
 
-                    const btn = document.getElementById(`btn-start-${member.id}`);
-                    if(btn) {
-                        btn.textContent = "ストップ";
-                        btn.className = "bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
+                    // 再開時処理（Final Lap削除）
+                    if (member.laps.length > 0 && member.laps[member.laps.length - 1].isFinal) {
+                        member.laps.pop();
+                        const lapDisplay = document.getElementById(`lap-display-${member.id}`);
+                        if(lapDisplay) {
+                            lapDisplay.classList.remove('text-red-600', 'font-bold');
+                            if(member.laps.length > 0) {
+                                 const lastLap = member.laps[member.laps.length - 1];
+                                 lapDisplay.textContent = `Lap ${member.laps.length}: ${formatTime(lastLap.lap)}`;
+                            } else {
+                                lapDisplay.textContent = "";
+                            }
+                        }
                     }
-                    const card = document.getElementById(`card-${member.id}`);
-                    if(card) {
-                        card.classList.remove("border-gray-300", "border-blue-500");
-                        card.classList.add("border-green-500");
-                    }
+
+                    updateCardUI(member);
                 }
             });
         }
@@ -455,17 +560,23 @@
                     member.isRunning = false;
                     member.elapsedTime = now - member.startTime;
                     member.finishedTime = member.elapsedTime;
+                    
+                    // Final Lap記録
+                    const finalLapTime = member.elapsedTime - member.lastLapSplit;
+                    if (finalLapTime > 0) {
+                        member.laps.push({
+                            split: member.elapsedTime,
+                            lap: finalLapTime,
+                            isFinal: true
+                        });
+                        const lapDisplay = document.getElementById(`lap-display-${member.id}`);
+                        if(lapDisplay) {
+                             lapDisplay.textContent = `Final Lap: ${formatTime(finalLapTime)}`;
+                             lapDisplay.classList.add('text-red-600', 'font-bold');
+                        }
+                    }
 
-                    const btn = document.getElementById(`btn-start-${member.id}`);
-                    if(btn) {
-                        btn.textContent = "再開";
-                        btn.className = "bg-orange-400 hover:bg-orange-500 text-white font-bold py-2 rounded transition shadow-sm active:scale-95";
-                    }
-                    const card = document.getElementById(`card-${member.id}`);
-                    if(card) {
-                        card.classList.remove("border-green-500");
-                        card.classList.add("border-blue-500");
-                    }
+                    updateCardUI(member);
                 }
             });
         }
@@ -473,7 +584,7 @@
         // 全員リセット
         function resetAll() {
             showModal("全員リセット", "全員のタイムをリセットしますか？この操作は取り消せません。", () => {
-                members.forEach(member => resetTimer(member.id));
+                members.forEach(member => resetTimerData(member));
             });
         }
 
@@ -504,7 +615,7 @@
             return `${mStr}:${sStr}.${msStr}`;
         }
 
-        // レポート生成（ソート機能付き）
+        // レポート生成
         function generateReport() {
             const area = document.getElementById('report-area');
             const now = new Date();
@@ -522,24 +633,32 @@
                     timeStr = formatTime(m.finishedTime);
                     status = "完了";
                 } else if (m.isRunning) {
-                    // 実行中の場合は現在の経過時間を使用
                     timeVal = Date.now() - m.startTime;
                     timeStr = formatTime(timeVal);
                     status = "計測中";
                 } else if (m.elapsedTime > 0) {
-                    // 一時停止中の場合
                     timeVal = m.elapsedTime;
                     timeStr = formatTime(m.elapsedTime);
                     status = "一時停止";
                 }
                 
                 return { ...m, timeVal, timeStr, status };
-            }).sort((a, b) => a.timeVal - b.timeVal); // 昇順ソート
+            }).sort((a, b) => a.timeVal - b.timeVal);
 
             sortedMembers.forEach((m, index) => {
-                // 計測されていない(Infinity)場合は順位を表示しない
                 const rank = m.timeVal === Infinity ? '-' : index + 1;
+                // メイン行
                 text += `${String(rank).padStart(2, ' ')}. ${m.name.padEnd(10, '　')}: ${m.timeStr} (${m.status})\n`;
+                
+                // ラップ行
+                if (m.laps.length > 0) {
+                    m.laps.forEach((lap, i) => {
+                        let label = `Lap ${String(i + 1).padStart(2, '0')}`;
+                        if (lap.isFinal) label = "Final Lap"; // 最後のラップを明示
+                        
+                        text += `    ${label}: ${formatTime(lap.lap)} (Split: ${formatTime(lap.split)})\n`;
+                    });
+                }
             });
             
             area.value = text;
